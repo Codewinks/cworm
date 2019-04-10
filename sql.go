@@ -1,199 +1,99 @@
-package worm
+package cworm
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
-	"strings"
+	// "strconv"
 )
 
-func (query *Query) BuildJoins() error {
-	for foreignKey, Model := range query.Joins {
-		if err := query.mapStruct(Model); err != nil {
-			return err
-		}
-
-		joinTable, err := getTableName(Model)
-		if err != nil {
-			return err
-		}
-
-		query.Join += fmt.Sprintf(" INNER JOIN %s ON %s.id=%s.%s", joinTable, joinTable, query.Table, foreignKey)
-	}
-
-	return nil
+type Where struct {
+	Column   string
+	Operator string
+	Value    interface{}
 }
 
-func (query *Query) BuildConditions() error {
-	for _, condition := range query.Conditions {
-		mapStruct := reflect.TypeOf(condition)
-		switch mapStruct.Name() {
-		case "Where":
-			w := condition.(Where)
-			if !strings.Contains(w.Column, ".") && query.Table != "" {
-				w.Column = query.Table + "." + w.Column
-			}
+//TODO:
+// Finished getting mapper working, need to fill struct now w/ query
+// [ ] Add/fix JOIN order, currently alphabetical and not specified order.
+// [ ] Figure out how to not require a Ptr value on .First()/.Get()/.Insert()
 
-			if query.Where == "" {
-				query.Where = fmt.Sprintf(" WHERE %s %s ?", w.Column, w.Operator)
-			} else {
-				query.Where += fmt.Sprintf(" AND %s %s ?", w.Column, w.Operator)
-			}
+func (db *DB) ResetQuery() {
+	db.Query = Query{}
+}
 
-			query.Args = append(query.Args, w.Value)
+func (db *DB) Select(columns ...string) *DB {
+	for _, column := range columns {
+		if db.Query.Select == "" {
+			db.Query.Select = fmt.Sprintf("SELECT %s", column)
+		} else {
+			db.Query.Select += fmt.Sprintf(",%s", column)
 		}
 	}
 
-	return nil
+	return db
 }
 
-func (query *Query) BuildSelect() (sql string, err error) {
-	if err = query.BuildConditions(); err != nil {
-		return "", err
+func (db *DB) Join(Model interface{}, foreignKey string) *DB {
+	if db.Query.Joins == nil {
+		db.Query.Joins = make(map[string]interface{})
 	}
 
-	if err = query.BuildJoins(); err != nil {
-		return "", err
+	db.Query.Joins[foreignKey] = Model
+
+	return db
+}
+
+func (db *DB) Where(column string, operator string, value interface{}) *DB {
+	db.Query.Conditions = append(db.Query.Conditions, Where{Column: column, Operator: operator, Value: value})
+
+	return db
+}
+
+func (db *DB) GroupBy(columns ...string) *DB {
+	for _, column := range columns {
+		if db.Query.GroupBy == "" {
+			db.Query.GroupBy = fmt.Sprintf(" GROUP BY %s", column)
+		} else {
+			db.Query.GroupBy += fmt.Sprintf(",%s", column)
+		}
 	}
 
-	if query.Select != "" {
-		sql = query.Select
+	return db
+}
+
+func (db *DB) OrderBy(column string, order string) *DB {
+	if db.Query.OrderBy == "" {
+		db.Query.OrderBy = fmt.Sprintf(" ORDER BY %s %s", column, order)
 	} else {
-		sql = "SELECT " + query.getColumns()
+		db.Query.OrderBy += fmt.Sprintf(",%s %s", column, order)
 	}
 
-	sql += " FROM " + query.Table
-
-	if query.Join != "" {
-		sql += query.Join
-	}
-	if query.Where != "" {
-		sql += query.Where
-	}
-	if query.GroupBy != "" {
-		sql += query.GroupBy
-	}
-	if query.Having != "" {
-		sql += query.Having
-	}
-	if query.OrderBy != "" {
-		sql += query.OrderBy
-	}
-	if query.Offset != "" {
-		sql += query.Offset
-	}
-	if query.Limit != "" {
-		sql += query.Limit
-	}
-
-	return
+	return db
 }
 
-func (query *Query) BuildInsert() (sql string, err error) {
-	sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", query.Table, query.getColumns(), query.getParams())
-	return
+func (db *DB) Limit(limit int) *DB {
+	db.Query.Limit = fmt.Sprintf(" LIMIT %d", limit)
+
+	return db
 }
 
-func (query *Query) fillRows(rows *sql.Rows) ([]interface{}, error) {
-	values := make([]sql.RawBytes, len(query.Columns))
-	scanArgs := make([]interface{}, len(query.Columns))
+func (db *DB) Offset(offset int) *DB {
+	db.Query.Offset = fmt.Sprintf(" OFFSET %d", offset)
 
-	for i := range values {
-		scanArgs[i] = &values[i]
-	}
-
-	var rowCount int
-	var results []interface{}
-	var index int
-
-	for rows.Next() {
-		rowCount++
-		err := rows.Scan(scanArgs...)
-		if err != nil {
-			return nil, errors.New(err.Error())
-		}
-
-		if err := query.fillModel(query.Model, values, index); err != nil {
-			return nil, err
-		}
-
-		// fmt.Printf("%#v \n", query.Model.Interface())
-		results = append(results, query.Model.Interface())
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, errors.New(err.Error())
-	}
-
-	if rowCount == 0 {
-		return nil, errors.New("Not Found")
-	}
-
-	return results, nil
+	return db
 }
 
-func (query *Query) fillModel(Model reflect.Value, values []sql.RawBytes, index int) error {
-	for i := 0; i < Model.NumField(); i++ {
-		fieldName := Model.Type().Field(i).Name
-		structField := Model.FieldByName(fieldName)
+func getTableName(Model interface{}) (string, error) {
+	modelStruct := reflect.TypeOf(Model)
 
-		if !structField.CanSet() {
-			continue
-		}
-
-		err := query.fillField(index+i, structField, fieldName, values)
-		if err != nil {
-			return errors.New(err.Error())
-		}
+	if modelStruct.Kind() == reflect.Ptr {
+		modelStruct = modelStruct.Elem()
 	}
 
-	return nil
-}
-
-func (query *Query) fillField(index int, structField reflect.Value, fieldName string, values []sql.RawBytes) error {
-	var v interface{}
-	var err error
-
-	if structField.Type().Kind() == reflect.Struct {
-		for _, Model := range query.Joins {
-			if structField.Type().Name() == reflect.TypeOf(Model).Name() {
-				if err := query.fillModel(structField, values, index); err != nil {
-					return err
-				}
-
-				return nil
-			}
-		}
-
-		return nil
+	if modelStruct.Kind() != reflect.Struct {
+		return "", errors.New("Model given is not a struct")
 	}
 
-	val := values[index]
-
-	switch structField.Type().Kind() {
-	case reflect.Slice:
-		v = val
-	case reflect.String:
-		v = string(val)
-	case reflect.Bool:
-		v = string(val) == "1"
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		v, err = strconv.Atoi(string(val))
-		if err != nil {
-			return errors.New("Field " + fieldName + " as int: " + err.Error())
-		}
-	case reflect.Float32, reflect.Float64:
-		v, err = strconv.ParseFloat(string(val), 64)
-		if err != nil {
-			return errors.New("Field " + fieldName + " as float64: " + err.Error())
-		}
-	default:
-		return errors.New("Unsupported type in Scan: " + reflect.TypeOf(v).String())
-	}
-
-	structField.Set(reflect.ValueOf(v))
-
-	return nil
+	return pluralizeString(snakeCase(modelStruct.Name())), nil
 }

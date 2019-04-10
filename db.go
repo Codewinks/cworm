@@ -1,4 +1,4 @@
-package worm
+package cworm
 
 import (
 	"database/sql"
