@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+//Query ...
 type Query struct {
 	Columns []string
 	Params  []string
@@ -31,6 +32,7 @@ type Query struct {
 	Model reflect.Value
 }
 
+//Exists ...
 func (db *DB) Exists(Model interface{}) (exists bool, err error) {
 	db.Query.Table, err = getTableName(Model)
 	if err != nil {
@@ -54,6 +56,7 @@ func (db *DB) Exists(Model interface{}) (exists bool, err error) {
 	return db.ReturnBool(exists, nil)
 }
 
+//First ...
 func (db *DB) First(Model interface{}) error {
 	rows, err := db.Limit(1).Get(Model)
 	if err != nil {
@@ -67,6 +70,7 @@ func (db *DB) First(Model interface{}) error {
 	return nil
 }
 
+//Get ...
 func (db *DB) Get(Model interface{}) ([]interface{}, error) {
 	if db.HasErrors() {
 		return db.ReturnGroup(nil, db.ErrorMessages())
@@ -99,10 +103,7 @@ func (db *DB) Get(Model interface{}) ([]interface{}, error) {
 	return db.ReturnGroup(results, nil)
 }
 
-func (db *DB) New(Model interface{}) (interface{}, error) {
-	return db.Insert(Model)
-}
-
+//Insert ...
 func (db *DB) Insert(Model interface{}) (interface{}, error) {
 	if db.HasErrors() {
 		return db.Return(nil, db.ErrorMessages())
@@ -140,6 +141,7 @@ func (db *DB) Insert(Model interface{}) (interface{}, error) {
 	return db.Return(db.Query.Model.Interface(), nil)
 }
 
+//Delete ...
 func (db *DB) Delete(Model interface{}) (int64, error) {
 	if db.HasErrors() {
 		return db.ReturnInt64(0, db.ErrorMessages())
@@ -172,6 +174,7 @@ func (db *DB) Delete(Model interface{}) (int64, error) {
 	return db.ReturnInt64(count, nil)
 }
 
+//Save ...
 func (db *DB) Save(Model interface{}) error {
 	if db.HasErrors() {
 		return db.ReturnError(db.ErrorMessages())
@@ -210,31 +213,37 @@ func (db *DB) Save(Model interface{}) error {
 	return nil
 }
 
+//Return – TODO: Refactor to not use return functions to reset query.
 func (db *DB) Return(resp interface{}, err error) (interface{}, error) {
 	db.ResetQuery()
 	return resp, err
 }
 
+//ReturnBool – TODO: Refactor to not use return functions to reset query.
 func (db *DB) ReturnBool(resp bool, err error) (bool, error) {
 	db.ResetQuery()
 	return resp, err
 }
 
+//ReturnInt64 – TODO: Refactor to not use return functions to reset query.
 func (db *DB) ReturnInt64(resp int64, err error) (int64, error) {
 	db.ResetQuery()
 	return resp, err
 }
 
+//ReturnError – TODO: Refactor to not use return functions to reset query.
 func (db *DB) ReturnError(err error) error {
 	db.ResetQuery()
 	return err
 }
 
+//ReturnGroup – TODO: Refactor to not use return functions to reset query.
 func (db *DB) ReturnGroup(resp []interface{}, err error) ([]interface{}, error) {
 	db.ResetQuery()
 	return resp, err
 }
 
+//BuildJoins ...
 func (query *Query) BuildJoins() error {
 	for foreignKey, Model := range query.Joins {
 		if err := query.mapStruct(Model); err != nil {
@@ -252,6 +261,7 @@ func (query *Query) BuildJoins() error {
 	return nil
 }
 
+//BuildConditions ...
 func (query *Query) BuildConditions() error {
 	for _, condition := range query.Conditions {
 		mapStruct := reflect.TypeOf(condition)
@@ -275,6 +285,7 @@ func (query *Query) BuildConditions() error {
 	return nil
 }
 
+//BuildSelect ...
 func (query *Query) BuildSelect() (sql string, err error) {
 	if err = query.BuildConditions(); err != nil {
 		return "", err
@@ -319,6 +330,7 @@ func (query *Query) BuildSelect() (sql string, err error) {
 	return
 }
 
+//BuildInsert ...
 func (query *Query) BuildInsert() (sql string, err error) {
 	sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", query.Table, query.getColumns(), query.getParams())
 
@@ -326,6 +338,7 @@ func (query *Query) BuildInsert() (sql string, err error) {
 	return
 }
 
+//BuildUpdate ...
 func (query *Query) BuildUpdate() (sql string, args []interface{}, err error) {
 	if err = query.BuildConditions(); err != nil {
 		return "", nil, err
@@ -333,15 +346,15 @@ func (query *Query) BuildUpdate() (sql string, args []interface{}, err error) {
 
 	sql = fmt.Sprintf("UPDATE %s SET ", query.Table)
 
-	setSql := []string{}
+	setSQL := []string{}
 	for i, col := range query.Columns {
 		if col == query.Table+".id" || col == query.Table+".created_at" || col == query.Table+".updated_at" {
 			continue
 		}
-		setSql = append(setSql, col+"=?")
+		setSQL = append(setSQL, col+"=?")
 		args = append(args, query.Values[i])
 	}
-	sql += strings.Join(setSql, ",")
+	sql += strings.Join(setSQL, ",")
 
 	if query.Where != "" {
 		sql += query.Where
@@ -355,6 +368,7 @@ func (query *Query) BuildUpdate() (sql string, args []interface{}, err error) {
 	return
 }
 
+//BuildDelete ...
 func (query *Query) BuildDelete() (sql string, args []interface{}, err error) {
 	if err = query.BuildConditions(); err != nil {
 		return "", nil, err
@@ -374,6 +388,7 @@ func (query *Query) BuildDelete() (sql string, args []interface{}, err error) {
 	return
 }
 
+//fillRows ...
 func (query *Query) fillRows(rows *sql.Rows) ([]interface{}, error) {
 	values := make([]sql.RawBytes, len(query.Columns))
 	scanArgs := make([]interface{}, len(query.Columns))
@@ -412,6 +427,7 @@ func (query *Query) fillRows(rows *sql.Rows) ([]interface{}, error) {
 	return results, nil
 }
 
+//fillModel ...
 func (query *Query) fillModel(Model reflect.Value, values []sql.RawBytes, index int) error {
 	for i := 0; i < Model.NumField(); i++ {
 		fieldName := Model.Type().Field(i).Name
@@ -430,6 +446,7 @@ func (query *Query) fillModel(Model reflect.Value, values []sql.RawBytes, index 
 	return nil
 }
 
+//fillField ...
 func (query *Query) fillField(index int, structField reflect.Value, fieldName string, values []sql.RawBytes) error {
 	var v interface{}
 	var err error
@@ -476,18 +493,22 @@ func (query *Query) fillField(index int, structField reflect.Value, fieldName st
 	return nil
 }
 
+//getTable ...
 func (query *Query) getTable(Model reflect.Value) string {
 	return pluralizeString(snakeCase(Model.Type().Name()))
 }
 
+//getParams ... TODO: possibly remove/refactor - not needed for simple method
 func (query *Query) getParams() string {
 	return strings.Join(query.Params, ",")
 }
 
+//getColumns ... TODO: possibly remove/refactor - not needed for simple method
 func (query *Query) getColumns() string {
 	return strings.Join(query.Columns, ",")
 }
 
+//mapStruct ...
 func (query *Query) mapStruct(Model interface{}) error {
 	modelStruct := reflect.Indirect(reflect.ValueOf(Model))
 	if modelStruct.Kind() != reflect.Struct {

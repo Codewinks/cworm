@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	// "strconv"
 )
 
+//Where ...
 type Where struct {
 	Column   string
 	Operator string
@@ -18,10 +18,12 @@ type Where struct {
 // [ ] Add/fix JOIN order, currently alphabetical and not specified order.
 // [ ] Figure out how to not require a Ptr value on .First()/.Get()/.Insert()
 
+//ResetQuery ...
 func (db *DB) ResetQuery() {
 	db.Query = Query{}
 }
 
+//Select ...
 func (db *DB) Select(columns ...string) *DB {
 	for _, column := range columns {
 		if db.Query.Select == "" {
@@ -34,6 +36,7 @@ func (db *DB) Select(columns ...string) *DB {
 	return db
 }
 
+//Join ...
 func (db *DB) Join(Model interface{}, foreignKey string) *DB {
 	if db.Query.Joins == nil {
 		db.Query.Joins = make(map[string]interface{})
@@ -44,12 +47,14 @@ func (db *DB) Join(Model interface{}, foreignKey string) *DB {
 	return db
 }
 
+//Where ...
 func (db *DB) Where(column string, operator string, value interface{}) *DB {
 	db.Query.Conditions = append(db.Query.Conditions, Where{Column: column, Operator: operator, Value: value})
 
 	return db
 }
 
+//GroupBy ...
 func (db *DB) GroupBy(columns ...string) *DB {
 	for _, column := range columns {
 		if db.Query.GroupBy == "" {
@@ -62,6 +67,7 @@ func (db *DB) GroupBy(columns ...string) *DB {
 	return db
 }
 
+//OrderBy ...
 func (db *DB) OrderBy(column string, order string) *DB {
 	if db.Query.OrderBy == "" {
 		db.Query.OrderBy = fmt.Sprintf(" ORDER BY %s %s", column, order)
@@ -72,18 +78,21 @@ func (db *DB) OrderBy(column string, order string) *DB {
 	return db
 }
 
+//Limit ...
 func (db *DB) Limit(limit int) *DB {
 	db.Query.Limit = fmt.Sprintf(" LIMIT %d", limit)
 
 	return db
 }
 
+//Offset ...
 func (db *DB) Offset(offset int) *DB {
 	db.Query.Offset = fmt.Sprintf(" OFFSET %d", offset)
 
 	return db
 }
 
+//getTableName ...
 func getTableName(Model interface{}) (string, error) {
 	modelStruct := reflect.TypeOf(Model)
 

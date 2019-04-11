@@ -3,13 +3,14 @@ package cworm
 import (
 	"database/sql"
 	"errors"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql" //MySQL library package for SQL
 )
 
 //TODO:
 // [] Check if connection is still alive, if not re-open. (Error checking if row exists '[test-test]' invalid connection)
 // [] Optimization - replace sprintf with string concat / buffer / builder
 
+//DB ...
 type DB struct {
 	*sql.DB
 	Query  Query
@@ -24,16 +25,12 @@ func Connect(connection string) (worm *DB, err error) {
 	return
 }
 
+//HasErrors ...
 func (db *DB) HasErrors() bool {
 	return len(db.Errors) > 0
 }
 
-func (db *DB) Error(err error) {
-	if err != nil {
-		db.Errors = append(db.Errors, err)
-	}
-}
-
+//ErrorMessages ...
 func (db *DB) ErrorMessages() error {
 	var msg string
 	for _, err := range db.Errors {
@@ -41,4 +38,10 @@ func (db *DB) ErrorMessages() error {
 	}
 
 	return errors.New(msg)
+}
+
+func (db *DB) Error(err error) {
+	if err != nil {
+		db.Errors = append(db.Errors, err)
+	}
 }
