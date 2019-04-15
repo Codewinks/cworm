@@ -3,6 +3,7 @@ package cworm
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	_ "github.com/go-sql-driver/mysql" //MySQL library package for SQL
 )
 
@@ -18,9 +19,13 @@ type DB struct {
 }
 
 //Connect establishes a new database connection
-func Connect(connection string) (worm *DB, err error) {
+func Connect(dialect string, username string, password string, host string, port string, database string) (worm *DB, err error) {
+	fmt.Printf("%s:%s@tcp(%s:%s)/%s", username, password, host, port, database)
+	if dialect == "" || username == "" || host == "" || port == "" || database == "" {
+		return nil, errors.New("Missing database credentials")
+	}
 	worm = &DB{}
-	worm.DB, err = sql.Open("mysql", connection)
+	worm.DB, err = sql.Open(dialect, fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", username, password, host, port, database))
 
 	return
 }
