@@ -20,7 +20,7 @@ type DB struct {
 
 //Connect establishes a new database connection
 func Connect(dialect string, username string, password string, host string, port string, database string) (worm *DB, err error) {
-	fmt.Printf("%s:%s@tcp(%s:%s)/%s", username, password, host, port, database)
+	// fmt.Printf("%s:%s@tcp(%s:%s)/%s\n", username, password, host, port, database)
 	if dialect == "" || username == "" || host == "" || port == "" || database == "" {
 		return nil, errors.New("Missing database credentials")
 	}

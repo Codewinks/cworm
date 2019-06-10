@@ -255,7 +255,7 @@ func (query *Query) BuildJoins() error {
 			return err
 		}
 
-		query.Join += fmt.Sprintf(" INNER JOIN %s ON %s.id=%s.%s", joinTable, joinTable, query.Table, foreignKey)
+		query.Join += fmt.Sprintf(" LEFT JOIN %s ON %s.id=%s.%s", joinTable, joinTable, query.Table, foreignKey)
 	}
 
 	return nil
@@ -420,9 +420,9 @@ func (query *Query) fillRows(rows *sql.Rows) ([]interface{}, error) {
 		return nil, errors.New(err.Error())
 	}
 
-	if rowCount == 0 {
-		return nil, errors.New("Not Found")
-	}
+	// if rowCount == 0 {
+	// 	return nil, errors.New("Not Found")
+	// }
 
 	return results, nil
 }
