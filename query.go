@@ -64,7 +64,7 @@ func (db *DB) First(Model interface{}) error {
 	}
 
 	if len(rows) == 0 {
-		return nil
+		return db.ReturnError(errors.New("Not found"))
 	}
 
 	return nil
@@ -123,20 +123,10 @@ func (db *DB) Insert(Model interface{}) (interface{}, error) {
 		return db.Return(nil, err)
 	}
 
-	res, err := stmt.Exec(db.Query.Values...)
+	_, err = stmt.Exec(db.Query.Values...)
 	if err != nil {
 		return db.Return(nil, err)
 	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return db.Return(nil, err)
-	}
-
-	if db.Query.Model.FieldByName("Id").CanSet() {
-		db.Query.Model.FieldByName("Id").Set(reflect.ValueOf(strconv.FormatInt(id, 10)))
-	}
-	//Query to get CreatedAt/UpdatedAt?
 
 	return db.Return(db.Query.Model.Interface(), nil)
 }
@@ -487,6 +477,9 @@ func (query *Query) fillField(index int, structField reflect.Value, fieldName st
 	default:
 		return errors.New("Unsupported type in Scan: " + reflect.TypeOf(v).String())
 	}
+
+	// fmt.Printf("%v: %#v – %T\n", fieldName, v, v)
+	// fmt.Println("--------------")
 
 	structField.Set(reflect.ValueOf(v))
 
