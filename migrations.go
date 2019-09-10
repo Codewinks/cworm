@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/codewinks/go-colors"
 )
@@ -35,6 +36,27 @@ func Migrate(cmd string) (msg string, err error) {
 		err = db.status()
 	case "migrate":
 		err = db.runMigrations()
+	default:
+		return "", fmt.Errorf(fmt.Sprintf("Command \"%s\" is not defined", cmd))
+	}
+
+	return
+}
+
+func Make(cmd string, name string) (msg string, err error) {
+	switch cmd {
+	case "migration":
+		fmt.Println("Make Migration")
+		timestamp := time.Now().UnixNano() / 1000000
+		filename := fmt.Sprintf("%s_%s.sql", strconv.FormatInt(timestamp, 10), strings.ToLower(name))
+
+		emptyFile, err := os.Create("database/migrations/" + filename)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		emptyFile.Close()
+		fmt.Printf("%s%-12s%s %s\n", colors.GREEN, "Created Migration:", colors.NC, filename)
 	default:
 		return "", fmt.Errorf(fmt.Sprintf("Command \"%s\" is not defined", cmd))
 	}
