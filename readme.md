@@ -11,7 +11,6 @@ Under development. cwORM created for CWBlog is a free and open-source content ma
 * [x] DB Migrations
 * [x] Basic ORM
 
-
 ### Roadmap:
 - [ ] Documentation (coming soon)
 
