@@ -1,5 +1,5 @@
-# cwORM – GoLang MySQL ORM
-Under development. cwORM created for CWBlog is a free and open-source content management system.
+# cwORM – GoLang ORM
+Under development. cwORM was created for CWBlog. cwORM is a free and open source ORM.
 
 ![Under Development](https://img.shields.io/badge/release-development-red)
 [![MIT License](https://img.shields.io/github/license/codewinks/cworm.svg)](https://opensource.org/licenses/MIT)
@@ -10,6 +10,9 @@ Under development. cwORM created for CWBlog is a free and open-source content ma
 ### Features
 * [x] DB Migrations
 * [x] Basic ORM
+* [x] MySQL
+* [ ] PostgreSQL
+* [ ] SQLite
 
 ### Roadmap:
 - [ ] Documentation (coming soon)
