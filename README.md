@@ -18,4 +18,4 @@ Under development. cwORM was created for CWBlog. cwORM is a free and open source
 - [ ] Documentation (coming soon)
 
 ### To-do:
-- [x] Refactor "Return" types and come up with a better solution to "reset/clear" Query   
+- [ ] Refactor "Return" types and come up with a better solution to "reset/clear" Query   
