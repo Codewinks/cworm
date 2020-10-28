@@ -37,12 +37,10 @@ func (db *DB) Select(columns ...string) *DB {
 }
 
 //Join ...
-func (db *DB) Join(Model interface{}, foreignKey string) *DB {
-	if db.Query.Joins == nil {
-		db.Query.Joins = make(map[string]interface{})
+func (db *DB) Join(models ...interface{}) *DB {
+	for _, model := range models {
+		db.Query.Joins = append(db.Query.Joins, model)
 	}
-
-	db.Query.Joins[foreignKey] = Model
 
 	return db
 }

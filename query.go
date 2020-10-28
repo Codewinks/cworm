@@ -2,6 +2,7 @@ package cworm
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -27,7 +28,7 @@ type Query struct {
 
 	Table      string
 	Conditions []interface{}
-	Joins      map[string]interface{}
+	Joins      []interface{}
 
 	Model reflect.Value
 }
@@ -233,20 +234,48 @@ func (db *DB) ReturnGroup(resp []interface{}, err error) ([]interface{}, error) 
 	return resp, err
 }
 
-//BuildJoins ...
-func (query *Query) BuildJoins() error {
-	for foreignKey, Model := range query.Joins {
-		if err := query.mapStruct(Model); err != nil {
-			return err
+//BuildJoin ...
+func (query *Query) BuildJoin(Model interface{}) error {
+	modelStruct := reflect.TypeOf(Model)
+	field, _ := reflect.TypeOf(query.Model.Interface()).FieldByName(modelStruct.Name())
+	foreignKey := field.Tag.Get("foreign_key")
+	jsonKey := field.Tag.Get("json")
+	jsonObject := field.Tag.Get("json_object")
+	if jsonObject != "" {
+		modelStruct := reflect.Indirect(reflect.ValueOf(Model))
+		tableName := query.getTable(modelStruct)
+		var columns []string
+		for i := 0; i < modelStruct.NumField(); i++ {
+			switch modelStruct.Field(i).Kind() {
+			case
+				reflect.Struct,
+				reflect.Slice,
+				reflect.Ptr:
+				continue
+			}
+
+			key := snakeCase(modelStruct.Type().Field(i).Name)
+			columns = append(columns, "'"+key+"'")
+			columns = append(columns, tableName+"."+key)
 		}
 
-		joinTable, err := getTableName(Model)
-		if err != nil {
-			return err
-		}
+		query.Columns = append(query.Columns, fmt.Sprintf("CONCAT('[',GROUP_CONCAT(JSON_OBJECT(%s)),']') as %s", strings.Join(columns, ","), jsonKey))
+		query.Join += fmt.Sprintf(" LEFT JOIN %s on JSON_CONTAINS(%s.%s, JSON_QUOTE(%s.%s), '$')", jsonKey, query.Table, jsonKey, jsonKey, jsonObject)
+		query.GroupBy += fmt.Sprintf(" GROUP BY %s.id", query.Table)
 
-		query.Join += fmt.Sprintf(" LEFT JOIN %s ON %s.id=%s.%s", joinTable, joinTable, query.Table, foreignKey)
+		return nil
 	}
+
+	if err := query.mapStruct(Model); err != nil {
+		return err
+	}
+
+	joinTable, err := getTableName(Model)
+	if err != nil {
+		return err
+	}
+
+	query.Join += fmt.Sprintf(" LEFT JOIN %s ON %s.id=%s.%s", joinTable, joinTable, query.Table, foreignKey)
 
 	return nil
 }
@@ -278,10 +307,6 @@ func (query *Query) BuildConditions() error {
 //BuildSelect ...
 func (query *Query) BuildSelect() (sql string, err error) {
 	if err = query.BuildConditions(); err != nil {
-		return "", err
-	}
-
-	if err = query.BuildJoins(); err != nil {
 		return "", err
 	}
 
@@ -418,13 +443,73 @@ func (query *Query) fillRows(rows *sql.Rows) ([]interface{}, error) {
 }
 
 //fillModel ...
-func (query *Query) fillModel(Model reflect.Value, values []sql.RawBytes, index int) error {
+func (query *Query) fillModel(Model reflect.Value, values []sql.RawBytes, index int) (err error) {
+	defer func() {
+		if err2 := recover(); err2 != nil {
+			err = errors.New(fmt.Sprintf("Exception: %v", err2))
+		}
+	}()
+
 	for i := 0; i < Model.NumField(); i++ {
-		fieldName := Model.Type().Field(i).Name
+		field := Model.Type().Field(i)
+		fieldName := field.Name
 		structField := Model.FieldByName(fieldName)
 
 		if !structField.CanSet() {
 			continue
+		}
+
+		structKind := structField.Type().Kind()
+		if structKind == reflect.Slice || structKind == reflect.Struct || structKind == reflect.Ptr {
+			structType := reflect.TypeOf(structField.Interface())
+			if structKind == reflect.Slice {
+				structType = structType.Elem()
+			}
+
+			var modelStruct reflect.Value
+
+			if structKind == reflect.Ptr {
+				test := reflect.New(structType.Elem()).Interface()
+				test2 := reflect.ValueOf(test).Elem()
+				if test2.Type().Kind() == reflect.Slice {
+					modelStruct = reflect.New(test2.Type().Elem()).Elem()
+				} else {
+					modelStruct = reflect.New(test2.Type()).Elem()
+				}
+			} else {
+				modelStruct = reflect.New(structType).Elem()
+			}
+
+			hasJoin := false
+			for _, joinModel := range query.Joins {
+				if joinModel == modelStruct.Interface() {
+					hasJoin = true
+
+					jsonObject := field.Tag.Get("json_object")
+					if jsonObject != "" {
+						data := reflect.New(structType.Elem()).Interface()
+						json.Unmarshal(values[index+i], &data)
+						structField.Set(reflect.ValueOf(data))
+					} else {
+						if err := query.fillModel(modelStruct, values, index+i); err != nil {
+							return err
+						}
+
+						field := reflect.New(reflect.TypeOf(joinModel))
+						field.Elem().Set(reflect.ValueOf(modelStruct.Interface()))
+						structField.Set(field)
+					}
+
+					break
+				}
+			}
+
+			if !hasJoin {
+				//fmt.Printf("%T does not have join\n", modelStruct.Interface())
+			}
+
+			continue
+
 		}
 
 		err := query.fillField(index+i, structField, fieldName, values)
@@ -436,24 +521,17 @@ func (query *Query) fillModel(Model reflect.Value, values []sql.RawBytes, index 
 	return nil
 }
 
-//fillField ...
-func (query *Query) fillField(index int, structField reflect.Value, fieldName string, values []sql.RawBytes) error {
-	var v interface{}
-	var err error
-
-	if structField.Type().Kind() == reflect.Struct {
-		for _, Model := range query.Joins {
-			if structField.Type().Name() == reflect.TypeOf(Model).Name() {
-				if err := query.fillModel(structField, values, index); err != nil {
-					return err
-				}
-
-				return nil
-			}
+//fillField ...9
+func (query *Query) fillField(index int, structField reflect.Value, fieldName string, values []sql.RawBytes) (err error) {
+	defer func() {
+		if err2 := recover(); err2 != nil {
+			err = errors.New(fmt.Sprintf("Exception: %v\n", err2))
 		}
+	}()
 
-		return nil
-	}
+	var v interface{}
+
+	//fmt.Printf("%v: %#v – %T\n", index, index, index)
 
 	val := values[index]
 
@@ -518,7 +596,46 @@ func (query *Query) mapStruct(Model interface{}) error {
 	var v interface{}
 
 	for i := 0; i < modelStruct.NumField(); i++ {
-		if modelStruct.Field(i).Kind() == reflect.Struct {
+		field := modelStruct.Type().Field(i)
+		fieldName := field.Name
+		structField := modelStruct.FieldByName(fieldName)
+		structFieldKind := modelStruct.Field(i).Kind()
+
+		if structFieldKind == reflect.Slice || structFieldKind == reflect.Struct || structFieldKind == reflect.Ptr {
+			structType := reflect.TypeOf(structField.Interface())
+			if structFieldKind == reflect.Slice {
+				structType = structType.Elem()
+			}
+
+			var modelStruct reflect.Value
+
+			if structFieldKind == reflect.Ptr {
+				test := reflect.New(structType.Elem()).Interface()
+				test2 := reflect.ValueOf(test).Elem()
+				if test2.Type().Kind() == reflect.Slice {
+					modelStruct = reflect.New(test2.Type().Elem()).Elem()
+				} else {
+					modelStruct = reflect.New(test2.Type()).Elem()
+				}
+			} else {
+				modelStruct = reflect.New(structType).Elem()
+			}
+
+			hasJoin := false
+			for _, joinModel := range query.Joins {
+				if joinModel == modelStruct.Interface() {
+					hasJoin = true
+					query.BuildJoin(joinModel)
+					break
+				}
+			}
+
+			if !hasJoin {
+				jsonKey := field.Tag.Get("json")
+				query.Columns = append(query.Columns, "\"\" as "+snakeCase(jsonKey))
+				query.Values = append(query.Values, nil)
+			}
+
 			continue
 		}
 
